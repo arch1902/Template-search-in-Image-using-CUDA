@@ -1,6 +1,6 @@
 compile:
-	g++ -std=c++11 main.cpp -o main
+	nvcc cuda_main.cu -o cuda
 run:
-	./main data_image.txt query_image.txt 10 10
+	./cuda data_image.txt query_image.txt 10 10
 clean:
-	rm main
+	rm cuda
