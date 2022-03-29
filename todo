@@ -1,0 +1,28 @@
+Given: data_image and query_image
+query_image might be rotated by -45,0,45 degrees to match in data_image
+compute the colour of non-integer pixel locations of an image using bilinear interpolation.
+
+However, a brute-force search need not provide good speed.
+Instead, an image summary can be computed to represent areas of an image.
+
+**Only if the average of all greyvalues in a data sub-image is within TH2 of
+the query image** (rotated and interpolated), shall we check if the RMSD is within TH1.
+
+Compute Img_Value which will be the avg from (0,0) to (query_x,query_y) in data_image.
+Iterate over the data image, if Img_value lies within TH1 of Img_Value_Query, then mark it as a valid candidate (This can be computed in O(1) time, just need to compare 2 values)
+
+Img_value for next sub region can be computed in O(query_x + query_y) time.
+And repeat this procedure while iterating over data_image.
+
+
+Approach:
+
+1.) First compute all valid candidates in parallel, then schedule them in parallel and also parallelize the RMSD calculation.
+Pro: More parallelization
+Con: Difficult to compute Img_value in parallel
+
+2.) Schedule candidate the moment somebody is marked true, parallelize RMSD calculation
+Pro: Img_value can be computed in O(query_x+query_y) time.
+Con: Less parallelization
+
+Would prefer 1st approach
