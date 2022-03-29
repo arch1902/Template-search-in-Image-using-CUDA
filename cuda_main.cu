@@ -1,43 +1,84 @@
 #include <iostream>
-#include <math.h>
-// Kernel function to add the elements of two arrays
-__global__
-void add(int n, float *x, float *y)
+#include <string>
+#include <fstream>
+
+using namespace std;
+
+// __global__ void add(int *a, int *b, int *c)
+// {
+//   *c = *a + *b;
+// }
+
+void input(int n, int m, ifstream file, int *arr, bool flag, int* avg)
 {
-  for (int i = 0; i < n; i++)
-    y[i] = x[i] + y[i];
+  int r,g,b;
+  int val;
+  for(int i=0;i<n;i++){
+      for(int j=0;j<m;j++){
+          file >> r >> g >> b;
+          //TODO check if conversion to float array is required or not
+          arr[i*m + j] = (r+g+b)/3;
+          val += arr[i*m+j];
+      }
+  }
+  if(flag)*avg=val;
 }
 
-int main(void)
-{
-  int N = 1<<20;
-  float *x, *y;
+int main(int argc, char* argv[]){
 
-  // Allocate Unified Memory – accessible from CPU or GPU
-  cudaMallocManaged(&x, N*sizeof(float));
-  cudaMallocManaged(&y, N*sizeof(float));
+    string data_image_path = argv[1];
+    string query_image_path = argv[2];
+    double threshold = stod(argv[3]);
+    int n = stoi(argv[4]);
+    int rows, cols;
+    int query_rows, query_cols;
+    int imageSummaryQuery;
 
-  // initialize x and y arrays on the host
-  for (int i = 0; i < N; i++) {
-    x[i] = 1.0f;
-    y[i] = 2.0f;
-  }
+    // Read the data image
+    ifstream data_image_file(data_image_path);
+    data_image_file >> rows >> cols;
+    int data_image[rows][cols];
+    input(rows,cols,data_image_file,data_image,false,&imageSummaryQuery);
+    data_image_file.close();
 
-  // Run kernel on 1M elements on the GPU
-  add<<<1, 1>>>(N, x, y);
+    // Read the query image
+    ifstream query_image_file(query_image_path);
+    string query_image_line;
+    query_image_file >> query_rows >> query_cols;
+    int query_image[query_rows][query_cols];
+    input(query_rows,query_cols,query_image_file,query_image,true,&imageSummaryQuery);
+    query_image_file.close();
 
-  // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
 
-  // Check for errors (all values should be 3.0f)
-  float maxError = 0.0f;
-  for (int i = 0; i < N; i++)
-    maxError = fmax(maxError, fabs(y[i]-3.0f));
-  std::cout << "Max error: " << maxError << std::endl;
 
-  // Free memory
-  cudaFree(x);
-  cudaFree(y);
-  
-  return 0;
+
+    // int a, b, c; // host copies of a, b, c
+    // int *d_a, *d_b, *d_c; // device copies of a, b, c
+    // int size = sizeof(int);
+    
+    // // Allocate space for device copies of a, b, c
+    // cudaMalloc((void **)&d_a, size);
+    // cudaMalloc((void **)&d_b, size);
+    // cudaMalloc((void **)&d_c, size);
+    
+    // // Setup input values
+    // a = 2;
+    // b = 7;
+    
+    // // Copy inputs to device
+    // cudaMemcpy(d_a, &a, size, cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_b, &b, size, cudaMemcpyHostToDevice);
+    
+    // // Launch add() kernel on GPU
+    // add<<<1,1>>>(d_a, d_b, d_c);
+    
+    // // Copy result back to host
+    // cudaMemcpy(&c, d_c, size, cudaMemcpyDeviceToHost);
+
+    // cout << "Val: " << c << "\n";
+    
+    // // Cleanup
+    // cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+    // return 0;
+
 }
