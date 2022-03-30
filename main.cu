@@ -34,24 +34,54 @@ __global__
 void computeImageSummary(float *data, int n, int m, int query_n, int query_m, float *result)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int x = ((idx - threadIdx.x)/3)/(m-query_m);
-    int y = ((idx - threadIdx.x)/3)%(m-query_m);
+    int x = ((idx - threadIdx.x)/3)/(m);
+    int y = ((idx - threadIdx.x)/3)%(m);
     int orientation = threadIdx.x;
     long long val = 0;
-    printf("x %d y %d or %d \n",x,y,orientation);
+    //printf("x %d y %d or %d \n",x,y,orientation);
     
     // printf("Inside, 1.)%d\t2.)%d\t3.)%d\t4.)%d\t5.)Idx:%d\n",x,y,query_n,query_m,idx);
     // printf("N,M, 1.)%d\t2.)%d\n",n,m);
     // if(x+query_n>=n || y+query_m>=m)return;
+
+    int xmin,xmax,ymin,ymax;
+    if(orientation==0){
+        xmin = 0;
+        xmax = query_n;
+        ymin = 0;
+        ymax = query_m;
+    }else if(orientation==1){ // +45 degrees
+        xmin = -(query_n)/(1.414);
+        xmax = query_m/(1.414);
+        ymin = 0;
+        ymax = (query_m + query_n)/(1.414);
+    }else { // -45 degrees
+        xmin = 0;
+        xmax = (query_m + query_n)/(1.414);
+        ymin = -(query_m)/(1.414);
+        ymax = (query_n)/(1.414);
+    }
     
 
-    for(int i=0;i<query_n;i++){
-        for(int j=0;j<query_m;j++){
-            val += data[(x+i)*m+(y+j)];
+    for(int i=xmin;i<xmax;i++){
+        for(int j=ymin;j<ymax;j++){
+            if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) val += 255;
+            else val += data[(x+i)*m+(y+j)];
         }
     }
 
-    result[idx] = (float)(val)/(query_n*query_m);
+    int boxSize = (xmax-xmin)*(ymax-ymin);
+
+    result[idx] = (float)(val)/boxSize;
+
+    // if(result[idx]>71.5 and result[idx]<72.5) {
+    //     printf("%d %d \n",x,y);
+    // }
+
+    if(x==290 and y==120 and orientation==1){
+        printf("%.6f \n", result[idx]);
+    }
+
     // printf("Sub region (%d,%d) avg value: %d\n",x,y,idx,result[idx]);
 
     // print blockDim
@@ -94,7 +124,7 @@ int main(int argc, char* argv[]){
     // int block_size = 256;
     // int grid_size = (rows-query_rows)/block_size + 1;
 
-    int imageSummarySize = (cols-query_cols)*(rows-query_rows)*3;
+    int imageSummarySize = (cols)*(rows)*3;
 
     float *imageSummary;
     // cudaMalloc((void **)&data_imageCuda,sizeof(int)*rows*cols);
@@ -105,7 +135,7 @@ int main(int argc, char* argv[]){
 
     cudaMallocManaged(&imageSummary, imageSummarySize*sizeof(float));
 
-    int num_blocks = (rows-query_rows)*(cols-query_cols);
+    int num_blocks = (rows)*(cols);
 
     // computeImageSummary<<<grid_size,block_size>>>(data_imageCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
@@ -124,7 +154,7 @@ int main(int argc, char* argv[]){
     cudaDeviceSynchronize();
 
     // for(int i=0;i<imageSummarySize;i++){
-    //     cout<<"x:"<<i/((cols-query_cols)*3)<<", y:"<<(i%((cols-query_cols)*3))/3<<", orientation:"<<(i%((cols-query_cols)*3))%3<<" -> "<<imageSummary[i]<<endl;
+    //     cout<<"x:"<<i/(cols*3)<<", y:"<<(i%(cols*3))/3<<", orientation:"<<(i%(cols*3))%3<<" -> "<<imageSummary[i]<<endl;
     // }
 
 
