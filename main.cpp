@@ -23,7 +23,7 @@ void input(int n, int m, string filename, int *arr, bool flag, int* avg)
       }
   }
   file.close();
-  if(flag)*avg=val;
+  if(flag) *avg=val;
 }
 
 
@@ -103,40 +103,5 @@ int main(int argc, char* argv[]){
 
     return 0;
 
-    // for(int i=0;i<rows-query_rows;i++)
-    // {
-    //   for(int j=0;j<cols-query_cols;j++)
-    //     cout << imageSummary[i][j] << ", ";cout << "\n";
-    // }
-
-
-    // int a, b, c; // host copies of a, b, c
-    // int *d_a, *d_b, *d_c; // device copies of a, b, c
-    // int size = sizeof(int);
-    
-    // // Allocate space for device copies of a, b, c
-    // cudaMalloc((void **)&d_a, size);
-    // cudaMalloc((void **)&d_b, size);
-    // cudaMalloc((void **)&d_c, size);
-    
-    // // Setup input values
-    // a = 2;
-    // b = 7;
-    
-    // // Copy inputs to device
-    // cudaMemcpy(d_a, &a, size, cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_b, &b, size, cudaMemcpyHostToDevice);
-    
-    // // Launch add() kernel on GPU
-    // add<<<1,1>>>(d_a, d_b, d_c);
-    
-    // // Copy result back to host
-    // cudaMemcpy(&c, d_c, size, cudaMemcpyDeviceToHost);
-
-    // cout << "Val: " << c << "\n";
-    
-    // // Cleanup
-    // cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
-    // return 0;
 
 }

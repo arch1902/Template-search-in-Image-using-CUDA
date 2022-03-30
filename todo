@@ -26,3 +26,17 @@ Pro: Img_value can be computed in O(query_x+query_y) time.
 Con: Less parallelization
 
 Would prefer 1st approach
+
+----------------------------------------------------------------------------------------------------------------------------
+
+Steps - 
+1) Convert data and query image into greyscale
+2) Calculate the image summary of the query image
+3)  For all m*n*3 possibilities, calculate image summary, shortlist candidates(Parallelize)
+    Bilinear Interpolation -
+    F(x,y) = z00*(1-x)*(1-y) + z10*x*(1-y) + z01*(1-x)*y + z11*x*y
+    Shift data image box accordingly to compute the avg value
+
+4)  For shortlisted candidates, calculate RMSD
+    If RMSD < TH1, append the triplet to the output list
+    Choose top n in ascending order of RMSD
