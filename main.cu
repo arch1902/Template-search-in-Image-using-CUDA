@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <vector>
+#include <algorithm>
 
 using namespace std;
 
@@ -35,24 +37,110 @@ void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bo
 // TODO optimize this function, add elements row-wise in parallel and then take their sum
 // User thread shared memory
 
+__device__
+void bilinearInterpolation(int *data, float x, float y, int col, float &val)
+{
+    float upx    = floor(x);
+    float downx  = ceil(x);
+    float righty = ceil(y);
+    float lefty  = floor(y);
+
+    float topleft = data[int(upx)*col+int(lefty)];
+    float topright = data[int(upx)*col+int(righty)];
+    float bottomleft = data[int(downx)*col+int(lefty)];
+    float bottomright = data[int(downx)*col+int(righty)];
+
+    // F(x,y) = z00*(1-x)*(1-y) + z10*x*(1-y) + z01*(1-x)*y + z11*x*y
+
+    float f = bottomleft*(righty-y)*(x-upx) + topleft*(righty-y)*(downx-x) + bottomright*(y-lefty)*(x-upx) + topright*(y-lefty)*(x-downx);
+    val = f;
+}
 
 __device__
-void computeRMSD(float *dataR, float *dataG, float *dataB, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, int x, int y, int &rmsd)
+void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, int idx, float &rmsd)
 {
-    float sum = 0;
-    for(int i=0;i<query_n;i++){
-        for(int j=0;j<query_m;j++){
-        sum += pow((dataR[(x+i)*m + (y+j)] - queryR[i*query_m + j]),2);
-        sum += pow((dataG[(x+i)*m + (y+j)] - queryG[i*query_m + j]),2);
-        sum += pow((dataB[(x+i)*m + (y+j)] - queryB[i*query_m + j]),2);
+    int x = idx/(m*3);
+    int y = (idx%(m*3))/3;
+    // (x,y) is the bottom left pixel coordinate of the data image
+    int orientation = (idx%(m*3))%3;
+    float sum  = 0;
+    // float temp = 0;
+
+    float ptx,pty,query_ptx,query_pty;
+
+    for(int i=query_n-1;i>=0;i--)
+    {
+        for(int j=0;j<query_m;j++)
+        {
+
+            // temp = 0;
+            query_ptx = query_n-1-i;
+            query_pty = j;
+
+            if(orientation==0)
+            {
+                ptx = x-i;
+                pty = y+j;
+
+                int data_cord = int(ptx)*m+int(pty);
+                int query_cord = int(query_ptx)*query_m+int(query_pty);
+
+                sum += (dataR[data_cord] - queryR[query_cord])*(dataR[data_cord] - queryR[query_cord]);
+                sum += (dataG[data_cord] - queryG[query_cord])*(dataG[data_cord] - queryG[query_cord]);
+                sum += (dataB[data_cord] - queryB[query_cord])*(dataB[data_cord] - queryB[query_cord]);
+            }
+            else if(orientation==1)
+            {
+                ptx = (x-i)*(1+1/1.414) + j*(1/1.414);
+                pty = j*(1+1/1.414) - (x-i)*(1/1.414);
+                int query_cord = int(query_ptx)*query_m+int(query_pty);
+
+                float r;bilinearInterpolation(dataR,ptx,pty,query_m,r);
+                float g;bilinearInterpolation(dataG,ptx,pty,query_m,g);
+                float b;bilinearInterpolation(dataB,ptx,pty,query_m,b);
+
+                sum += (r - queryR[query_cord])*(r - queryR[query_cord]);
+                sum += (g - queryG[query_cord])*(g - queryG[query_cord]);
+                sum += (b - queryB[query_cord])*(b - queryB[query_cord]);
+
+            }
+            else if(orientation==2)
+            {
+                ptx = (x-i)*(1+1/1.414) - j*(1/1.414);
+                pty = j*(1+1/1.414) + (x-i)*(1/1.414);
+                int query_cord = int(query_ptx)*query_m+int(query_pty);
+
+                float r;bilinearInterpolation(dataR,ptx,pty,query_m,r);
+                float g;bilinearInterpolation(dataG,ptx,pty,query_m,g);
+                float b;bilinearInterpolation(dataB,ptx,pty,query_m,b);
+
+                sum += (r - queryR[query_cord])*(r - queryR[query_cord]);
+                sum += (g - queryG[query_cord])*(g - queryG[query_cord]);
+                sum += (b - queryB[query_cord])*(b - queryB[query_cord]);
+            }
         }
     }
-    rmsd = sqrt(sum);
+
+    rmsd = sqrt(sum/(query_n*query_m*3));
+
+    // sum += queryR[query_ptx*query_m + query_pty]-dataR[ptx*m + pty];
+    // // sum += (dataR[data_cord] - queryR[query_cord])*(dataR[data_cord] - queryR[query_cord]);
+
+    // for(int i=0;i<query_n;i++)
+    // {
+    //     for(int j=0;j<query_m;j++)
+    //     {
+    //         sum += pow((dataR[(x+i)*m + (y+j)] - queryR[i*query_m + j]),2);
+    //         sum += pow((dataG[(x+i)*m + (y+j)] - queryG[i*query_m + j]),2);
+    //         sum += pow((dataB[(x+i)*m + (y+j)] - queryB[i*query_m + j]),2);
+    //     }
+    // }
+    // rmsd = sqrt(sum);
 }
 
 // TODO store R,G,B pointers in some array or in some sort of struct
 __global__
-void computeImageSummary(float *data, float *dataR, float *dataG, float *dataB, int *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, int QueryVal, int threshold)
+void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, float *rmsdValues, int QueryVal, int threshold)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx> m*n*3) return;
@@ -97,11 +185,15 @@ void computeImageSummary(float *data, float *dataR, float *dataG, float *dataB, 
 
     result[idx] = (float)(val)/boxSize;
 
+    float rmsd = -1;
+
     if(abs(result[idx] -QueryVal)<=threshold)
     {
-        computeRMSD(dataR,dataG,dataB,queryR,queryG,queryB,n,m,query_n,query_m,x,y,rmsd);
+        computeRMSD(dataR,dataG,dataB,queryR,queryG,queryB,n,m,query_n,query_m,idx,rmsd);
         // computeRMSD(data,queryData,n,m,query_n,query_m,x,y);
     }
+
+    rmsdValues[idx] = rmsd;
 
     // if(result[idx]>71.5 and result[idx]<72.5) {
     //     printf("%d %d %f \n",x,y,result[idx]);
@@ -115,6 +207,18 @@ void computeImageSummary(float *data, float *dataR, float *dataG, float *dataB, 
 
     // print blockDim
     //printf("BlockDim: %d\t, BlockIdx: %d\t, ThreadIdx: %d\n",blockDim.x,blockIdx.x,threadIdx.x);
+}
+
+struct triplet
+{
+    int x,y;
+    float val;
+};
+
+bool sortbyVal(const triplet &a, 
+              const triplet &b) 
+{ 
+    return (a.val > b.val);
 }
 
 int main(int argc, char* argv[]){
@@ -170,6 +274,7 @@ int main(int argc, char* argv[]){
     int imageSummarySize = (cols)*(rows)*3;
 
     float *imageSummary;
+    float *rmsdValues;
     // cudaMalloc((void **)&data_imageVCuda,sizeof(int)*rows*cols);
     // cudaMalloc((void **)&imageSummaryCuda,sizeof(int)*imageSummarySize);
     
@@ -177,12 +282,13 @@ int main(int argc, char* argv[]){
 
 
     cudaMallocManaged(&imageSummary, imageSummarySize*sizeof(float));
+    cudaMallocManaged(&rmsdValues, imageSummarySize*sizeof(float));
 
     int num_blocks = (rows*cols*3)/1024 + 1;
 
     // computeImageSummary<<<grid_size,block_size>>>(data_imageVCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
-    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,query_imageV,rows,cols,query_rows,query_cols,imageSummary,imageSummaryQuery,threshold1);
+    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold1);
 
     cudaError_t err = cudaGetLastError();
 
@@ -195,6 +301,28 @@ int main(int argc, char* argv[]){
 
 
     cudaDeviceSynchronize();
+
+    vector<triplet> output;
+
+    for(int i=0;i<imageSummarySize;i++)
+    {
+        if(rmsdValues[i]!=-1)
+        {
+    //         int x = idx/(m*3);
+    // int y = (idx%(m*3))/3;
+            triplet t;
+            t.x   = i/(cols*3);
+            t.y   = (i%(cols*3))/3;
+            t.val = rmsdValues[i];
+            output.push_back(t);
+        }
+    }
+    sort(output.begin(),output.end(),sortbyVal);
+
+    for(int i=0;i<output.size();i++)
+    {
+        cout << "x:" << output[i].x << ", y:" << output[i].y << ", val:" << output[i].val << "\n";
+    }
 
     // for(int i=0;i<imageSummarySize;i++){
     //     cout<<"x:"<<i/(cols*3)<<", y:"<<(i%(cols*3))/3<<", orientation:"<<(i%(cols*3))%3<<" -> "<<imageSummary[i]<<endl;
