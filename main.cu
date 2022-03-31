@@ -14,9 +14,10 @@ using namespace std;
 void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bool flag, int &avg)
 {
   int r,g,b;
-  int val;
+  int val = 0;
   ifstream file(filename);
-  for(int i=0;i<n;i++){
+  file >> n >> m;
+  for(int i=n-1;i>=0;i--){
       for(int j=0;j<m;j++){
           file >> r >> g >> b;
           R[i*m + j] = r;
@@ -212,21 +213,22 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
 struct triplet
 {
     int x,y;
+    int orientation; // 0 for 0 degrees, 1 for 45 degrees, 2 for -45 degrees
     float val;
 };
 
 bool sortbyVal(const triplet &a, 
               const triplet &b) 
 { 
-    return (a.val > b.val);
+    return (a.val < b.val);
 }
 
 int main(int argc, char* argv[]){
 
     string data_image_path = argv[1];
     string query_image_path = argv[2];
-    double threshold1 = stod(argv[3]);
-    double threshold2 = stod(argv[4]);
+    double threshold1 = stod(argv[3]); // for RMSD
+    double threshold2 = stod(argv[4]); // for Gray-Scale image summary
     int n = stoi(argv[5]);
     int rows, cols;
     int imageSummaryQuery;
@@ -288,7 +290,7 @@ int main(int argc, char* argv[]){
 
     // computeImageSummary<<<grid_size,block_size>>>(data_imageVCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
-    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold1);
+    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold2);
 
     cudaError_t err = cudaGetLastError();
 
@@ -313,16 +315,18 @@ int main(int argc, char* argv[]){
             triplet t;
             t.x   = i/(cols*3);
             t.y   = (i%(cols*3))/3;
+            t.orientation = (i%(cols*3))%3;
             t.val = rmsdValues[i];
             output.push_back(t);
         }
     }
     sort(output.begin(),output.end(),sortbyVal);
 
-    for(int i=0;i<output.size();i++)
+    for(int i=0;i<min(n,(int)output.size());i++)
     {
-        cout << "x:" << output[i].x << ", y:" << output[i].y << ", val:" << output[i].val << "\n";
+        cout << "x:" << output[i].x << ", y:" << output[i].y << ", orientation:" << output[i].orientation << ", val:" << output[i].val << "\n";
     }
+    cout<<output.size()<<endl;
 
     // for(int i=0;i<imageSummarySize;i++){
     //     cout<<"x:"<<i/(cols*3)<<", y:"<<(i%(cols*3))/3<<", orientation:"<<(i%(cols*3))%3<<" -> "<<imageSummary[i]<<endl;
