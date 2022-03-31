@@ -34,8 +34,25 @@ void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bo
 
 // TODO optimize this function, add elements row-wise in parallel and then take their sum
 // User thread shared memory
+
+
+__device__
+void computeRMSD(float *dataR, float *dataG, float *dataB, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, int x, int y, int &rmsd)
+{
+    float sum = 0;
+    for(int i=0;i<query_n;i++){
+        for(int j=0;j<query_m;j++){
+        sum += pow((dataR[(x+i)*m + (y+j)] - queryR[i*query_m + j]),2);
+        sum += pow((dataG[(x+i)*m + (y+j)] - queryG[i*query_m + j]),2);
+        sum += pow((dataB[(x+i)*m + (y+j)] - queryB[i*query_m + j]),2);
+        }
+    }
+    rmsd = sqrt(sum);
+}
+
+// TODO store R,G,B pointers in some array or in some sort of struct
 __global__
-void computeImageSummary(float *data, int n, int m, int query_n, int query_m, float *result)
+void computeImageSummary(float *data, float *dataR, float *dataG, float *dataB, int *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, int QueryVal, int threshold)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx> m*n*3) return;
@@ -80,7 +97,11 @@ void computeImageSummary(float *data, int n, int m, int query_n, int query_m, fl
 
     result[idx] = (float)(val)/boxSize;
 
-    if()
+    if(abs(result[idx] -QueryVal)<=threshold)
+    {
+        computeRMSD(dataR,dataG,dataB,queryR,queryG,queryB,n,m,query_n,query_m,x,y,rmsd);
+        // computeRMSD(data,queryData,n,m,query_n,query_m,x,y);
+    }
 
     // if(result[idx]>71.5 and result[idx]<72.5) {
     //     printf("%d %d %f \n",x,y,result[idx]);
@@ -126,9 +147,17 @@ int main(int argc, char* argv[]){
     int query_rows, query_cols;
     query_image_file >> query_rows >> query_cols;
     query_image_file.close();
-    float query_image[query_rows*query_cols];
+    float *query_imageV;
+    int *query_imageR;
+    int *query_imageG;
+    int *query_imageB;
+
+    cudaMallocManaged(&query_imageV, query_rows*query_cols*sizeof(float));
+    cudaMallocManaged(&query_imageR, query_rows*query_cols*sizeof(int));
+    cudaMallocManaged(&query_imageG, query_rows*query_cols*sizeof(int));
+    cudaMallocManaged(&query_imageB, query_rows*query_cols*sizeof(int));
     
-    input(query_rows,query_cols,query_image_path,query_image,data_imageR,data_imageG,data_imageB,true,imageSummaryQuery);
+    input(query_rows,query_cols,query_image_path,query_imageV,query_imageR,query_imageG,query_imageB,true,imageSummaryQuery);
 
     cout<<"Query Image Summary: "<<imageSummaryQuery<<endl;
 
@@ -153,7 +182,7 @@ int main(int argc, char* argv[]){
 
     // computeImageSummary<<<grid_size,block_size>>>(data_imageVCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
-    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,rows,cols,query_rows,query_cols,imageSummary);
+    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,query_imageV,rows,cols,query_rows,query_cols,imageSummary,imageSummaryQuery,threshold1);
 
     cudaError_t err = cudaGetLastError();
 
