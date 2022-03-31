@@ -9,7 +9,7 @@ using namespace std;
 //   *c = *a + *b;
 // }
 
-void input(int n, int m, string filename, float *arr, bool flag, int &avg)
+void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bool flag, int &avg)
 {
   int r,g,b;
   int val;
@@ -17,6 +17,10 @@ void input(int n, int m, string filename, float *arr, bool flag, int &avg)
   for(int i=0;i<n;i++){
       for(int j=0;j<m;j++){
           file >> r >> g >> b;
+          R[i*m + j] = r;
+          G[i*m + j] = g;
+          B[i*m + j] = b;
+
           //TODO check if conversion to float array is required or not
           arr[i*m + j] = (r+g+b)/3;
           val += arr[i*m+j];
@@ -34,9 +38,10 @@ __global__
 void computeImageSummary(float *data, int n, int m, int query_n, int query_m, float *result)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int x = ((idx - threadIdx.x)/3)/(m);
-    int y = ((idx - threadIdx.x)/3)%(m);
-    int orientation = threadIdx.x;
+    if(idx> m*n*3) return;
+    int x = idx/(m*3);
+    int y = (idx%(m*3))/3;
+    int orientation = (idx%(m*3))%3;
     long long val = 0;
     //printf("x %d y %d or %d \n",x,y,orientation);
     
@@ -45,28 +50,29 @@ void computeImageSummary(float *data, int n, int m, int query_n, int query_m, fl
     // if(x+query_n>=n || y+query_m>=m)return;
 
     int xmin,xmax,ymin,ymax;
+
     if(orientation==0){
         xmin = 0;
         xmax = query_n;
         ymin = 0;
         ymax = query_m;
     }else if(orientation==1){ // +45 degrees
-        xmin = -(query_n)/(1.414);
-        xmax = query_m/(1.414);
-        ymin = 0;
-        ymax = (query_m + query_n)/(1.414);
-    }else { // -45 degrees
+        ymin = -(query_n)/(1.414);
+        ymax = query_m/(1.414);
         xmin = 0;
         xmax = (query_m + query_n)/(1.414);
-        ymin = -(query_m)/(1.414);
-        ymax = (query_n)/(1.414);
+    }else { // -45 degrees
+        ymin = 0;
+        ymax = (query_m + query_n)/(1.414);
+        xmin = -(query_m)/(1.414);
+        xmax = (query_n)/(1.414);
     }
     
 
     for(int i=xmin;i<xmax;i++){
         for(int j=ymin;j<ymax;j++){
             if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) val += 255;
-            else val += data[(x+i)*m+(y+j)];
+            else val += data[(x+i)*m + (y+j)];
         }
     }
 
@@ -74,13 +80,15 @@ void computeImageSummary(float *data, int n, int m, int query_n, int query_m, fl
 
     result[idx] = (float)(val)/boxSize;
 
+    if()
+
     // if(result[idx]>71.5 and result[idx]<72.5) {
-    //     printf("%d %d \n",x,y);
+    //     printf("%d %d %f \n",x,y,result[idx]);
     // }
 
-    if(x==290 and y==120 and orientation==1){
-        printf("%.6f \n", result[idx]);
-    }
+    // if(x==290 and y==120 and orientation==1){
+    //     printf("%.6f \n", result[idx]);
+    // }
 
     // printf("Sub region (%d,%d) avg value: %d\n",x,y,idx,result[idx]);
 
@@ -102,10 +110,16 @@ int main(int argc, char* argv[]){
     ifstream data_image_file(data_image_path);
     data_image_file >> rows >> cols;
     data_image_file.close();
-    float *data_image;
-    cudaMallocManaged(&data_image, rows*cols*sizeof(float));
+    float *data_imageV;
+    int *data_imageR;
+    int *data_imageG;
+    int *data_imageB;
+    cudaMallocManaged(&data_imageV, rows*cols*sizeof(float));
+    cudaMallocManaged(&data_imageR, rows*cols*sizeof(int));
+    cudaMallocManaged(&data_imageG, rows*cols*sizeof(int));
+    cudaMallocManaged(&data_imageB, rows*cols*sizeof(int));
 
-    input(rows,cols,data_image_path,data_image,false,imageSummaryQuery);
+    input(rows,cols,data_image_path,data_imageV,data_imageR,data_imageG,data_imageB,false,imageSummaryQuery);
 
     // Read the query image
     ifstream query_image_file(query_image_path);
@@ -114,7 +128,7 @@ int main(int argc, char* argv[]){
     query_image_file.close();
     float query_image[query_rows*query_cols];
     
-    input(query_rows,query_cols,query_image_path,query_image,true,imageSummaryQuery);
+    input(query_rows,query_cols,query_image_path,query_image,data_imageR,data_imageG,data_imageB,true,imageSummaryQuery);
 
     cout<<"Query Image Summary: "<<imageSummaryQuery<<endl;
 
@@ -127,19 +141,19 @@ int main(int argc, char* argv[]){
     int imageSummarySize = (cols)*(rows)*3;
 
     float *imageSummary;
-    // cudaMalloc((void **)&data_imageCuda,sizeof(int)*rows*cols);
+    // cudaMalloc((void **)&data_imageVCuda,sizeof(int)*rows*cols);
     // cudaMalloc((void **)&imageSummaryCuda,sizeof(int)*imageSummarySize);
     
-    // cudaMemcpy(data_imageCuda,&data_image,sizeof(int)*rows*cols,cudaMemcpyHostToDevice);
+    // cudaMemcpy(data_imageVCuda,&data_imageV,sizeof(int)*rows*cols,cudaMemcpyHostToDevice);
 
 
     cudaMallocManaged(&imageSummary, imageSummarySize*sizeof(float));
 
-    int num_blocks = (rows)*(cols);
+    int num_blocks = (rows*cols*3)/1024 + 1;
 
-    // computeImageSummary<<<grid_size,block_size>>>(data_imageCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
+    // computeImageSummary<<<grid_size,block_size>>>(data_imageVCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
-    computeImageSummary<<<num_blocks, 3>>>(data_image,rows,cols,query_rows,query_cols,imageSummary);
+    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,rows,cols,query_rows,query_cols,imageSummary);
 
     cudaError_t err = cudaGetLastError();
 
