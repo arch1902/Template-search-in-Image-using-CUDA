@@ -17,7 +17,6 @@ void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bo
   int val = 0;
   ifstream file(filename);
   file >> n >> m;
-  cout<<n<<" "<<m<<endl;
   for(int i=n-1;i>=0;i--){
       for(int j=0;j<m;j++){
           file >> r >> g >> b;
@@ -47,21 +46,13 @@ void bilinearInterpolation(int *data, float x, float y, int col, float &val)
     float righty = ceil(y);
     float lefty  = floor(y);
 
-    // if(x<2) printf("%f %d",upx,int(upx));
-    // printf("%f %d",downx,int(downx));
-    // printf("%f %d",righty,int(righty));
-    // printf("%f %d",lefty,int(lefty));
-
-
     float topleft = data[int(upx)*col+int(lefty)];
     float topright = data[int(upx)*col+int(righty)];
     float bottomleft = data[int(downx)*col+int(lefty)];
     float bottomright = data[int(downx)*col+int(righty)];
 
     // F(x,y) = z00*(1-x)*(1-y) + z10*x*(1-y) + z01*(1-x)*y + z11*x*y
-
     float f = bottomleft*(righty - y)*(upx - x) + topleft*(righty - y)*(x - downx) + bottomright*(y-lefty)*(upx - x) + topright*(y-lefty)*(x-downx);
-
     val = f;
 }
 
@@ -75,36 +66,29 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
     float sum  = 0;
     // float temp = 0;
 
-    float ptx,pty,query_ptx,query_pty;
+    float ptx,pty;
 
     for(int i=0;i<query_n;i++)
     {
         for(int j=0;j<query_m;j++)
         {
-            printf("%d %d",i,j);
-
-            // temp = 0;
-            query_ptx = i;
-            query_pty = j;
-
             if(orientation==0)
             {
-                ptx = x + query_ptx;
-                pty = y + query_pty;
+                ptx = x+i;
+                pty = y+j;
 
                 int data_cord = int(ptx)*m+int(pty);
-                int query_cord = int(query_ptx)*query_m+int(query_pty);
+                int query_cord = int(i)*query_m+int(j);
 
                 sum += (dataR[data_cord] - queryR[query_cord])*(dataR[data_cord] - queryR[query_cord]);
                 sum += (dataG[data_cord] - queryG[query_cord])*(dataG[data_cord] - queryG[query_cord]);
                 sum += (dataB[data_cord] - queryB[query_cord])*(dataB[data_cord] - queryB[query_cord]);
             }
-            else if(orientation==1) // +45 degrees
+            else if(orientation==1)
             {
                 ptx = x + i*(1/1.414) + j*(1/1.414);
                 pty = y + j*(1/1.414) - i*(1/1.414);
-
-                int query_cord = int(query_ptx)*query_m+int(query_pty);
+                int query_cord = int(i)*query_m+int(j);
 
                 float r;bilinearInterpolation(dataR,ptx,pty,query_m,r);
                 float g;bilinearInterpolation(dataG,ptx,pty,query_m,g);
@@ -117,9 +101,9 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
             }
             else if(orientation==2)
             {
-                ptx = (x-i)*(1+1/1.414) - j*(1/1.414);
-                pty = j*(1+1/1.414) + (x-i)*(1/1.414);
-                int query_cord = int(query_ptx)*query_m+int(query_pty);
+                ptx = x + i*(1/1.414) - j*(1/1.414);
+                ptx = x + i*(1/1.414) + j*(1/1.414);
+                int query_cord = int(i)*query_m+int(j);
 
                 float r;bilinearInterpolation(dataR,ptx,pty,query_m,r);
                 float g;bilinearInterpolation(dataG,ptx,pty,query_m,g);
@@ -134,19 +118,6 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
 
     rmsd = sqrt(sum/(query_n*query_m*3));
 
-    // sum += queryR[query_ptx*query_m + query_pty]-dataR[ptx*m + pty];
-    // // sum += (dataR[data_cord] - queryR[query_cord])*(dataR[data_cord] - queryR[query_cord]);
-
-    // for(int i=0;i<query_n;i++)
-    // {
-    //     for(int j=0;j<query_m;j++)
-    //     {
-    //         sum += pow((dataR[(x+i)*m + (y+j)] - queryR[i*query_m + j]),2);
-    //         sum += pow((dataG[(x+i)*m + (y+j)] - queryG[i*query_m + j]),2);
-    //         sum += pow((dataB[(x+i)*m + (y+j)] - queryB[i*query_m + j]),2);
-    //     }
-    // }
-    // rmsd = sqrt(sum);
 }
 
 // TODO store R,G,B pointers in some array or in some sort of struct
@@ -159,7 +130,7 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
     int y = (idx%(m*3))/3;
     int orientation = (idx%(m*3))%3;
     long long val = 0;
-    printf("x %d y %d or %d \n",x,y,orientation);
+    //printf("x %d y %d or %d \n",x,y,orientation);
     
     // printf("Inside, 1.)%d\t2.)%d\t3.)%d\t4.)%d\t5.)Idx:%d\n",x,y,query_n,query_m,idx);
     // printf("N,M, 1.)%d\t2.)%d\n",n,m);
@@ -186,10 +157,16 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
     
 
     for(int i=xmin;i<xmax;i++){
+        bool flag = false;
         for(int j=ymin;j<ymax;j++){
-            if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) val += 255;
+            if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) {
+                val = 0;
+                flag = true;
+                break;
+            }
             else val += data[(x+i)*m + (y+j)];
         }
+        if(flag) break;
     }
 
     int boxSize = (xmax-xmin)*(ymax-ymin);
@@ -211,7 +188,7 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
     // }
 
     if(x==290 and y==120 and orientation==1){
-        printf("%.6f \n", result[idx]);
+        printf("%.6f \n", rmsdValues[idx]);
     }
 
     // printf("Sub region (%d,%d) avg value: %d\n",x,y,idx,result[idx]);
@@ -235,8 +212,6 @@ bool sortbyVal(const triplet &a,
 
 int main(int argc, char* argv[]){
 
-    cout<<"Hello1"<<endl;
-
     string data_image_path = argv[1];
     string query_image_path = argv[2];
     double threshold1 = stod(argv[3]); // for RMSD
@@ -253,16 +228,12 @@ int main(int argc, char* argv[]){
     int *data_imageR;
     int *data_imageG;
     int *data_imageB;
-    cout<<"Hello2"<<endl;
     cudaMallocManaged(&data_imageV, rows*cols*sizeof(float));
     cudaMallocManaged(&data_imageR, rows*cols*sizeof(int));
     cudaMallocManaged(&data_imageG, rows*cols*sizeof(int));
     cudaMallocManaged(&data_imageB, rows*cols*sizeof(int));
-    cout<<"Hello3"<<endl;
 
     input(rows,cols,data_image_path,data_imageV,data_imageR,data_imageG,data_imageB,false,imageSummaryQuery);
-
-    cout<<"Hello4"<<endl;
 
     // Read the query image
     ifstream query_image_file(query_image_path);
@@ -302,12 +273,11 @@ int main(int argc, char* argv[]){
     cudaMallocManaged(&imageSummary, imageSummarySize*sizeof(float));
     cudaMallocManaged(&rmsdValues, imageSummarySize*sizeof(float));
 
-    int num_threads_per_block = 1024;
-    int num_blocks = (rows*cols*3)/num_threads_per_block + 1;
+    int num_blocks = (rows*cols*3)/1024 + 1;
 
     // computeImageSummary<<<grid_size,block_size>>>(data_imageVCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
-    computeImageSummary<<<num_blocks, num_threads_per_block>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold2);
+    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold2);
 
     cudaError_t err = cudaGetLastError();
 
@@ -339,12 +309,11 @@ int main(int argc, char* argv[]){
     }
     sort(output.begin(),output.end(),sortbyVal);
 
-    for(int i=0;i<min(1,(int)output.size());i++)
+    for(int i=0;i<min(n,(int)output.size());i++)
     {
         cout << "x:" << output[i].x << ", y:" << output[i].y << ", orientation:" << output[i].orientation << ", val:" << output[i].val << "\n";
     }
-
-    //cout<<output.size()<<endl;
+    cout<<output.size()<<endl;
 
     // for(int i=0;i<imageSummarySize;i++){
     //     cout<<"x:"<<i/(cols*3)<<", y:"<<(i%(cols*3))/3<<", orientation:"<<(i%(cols*3))%3<<" -> "<<imageSummary[i]<<endl;

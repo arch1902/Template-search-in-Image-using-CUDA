@@ -1,5 +1,5 @@
 compile:
-	nvcc -std=c++11 -Wno-deprecated-gpu-targets -gencode=arch=compute_35,code=sm_35 main.cu -o cuda
+	nvcc -Wno-deprecated-gpu-targets -std=c++11 -gencode=arch=compute_35,code=sm_35 main.cu -o cuda
 run:
 	./cuda data_image.txt query_image.txt 1 255 10
 clean:
