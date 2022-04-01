@@ -11,10 +11,10 @@ using namespace std;
 //   *c = *a + *b;
 // }
 
-void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bool flag, int &avg)
+void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bool flag, float &avg)
 {
   int r,g,b;
-  int val = 0;
+  float val = 0;
   ifstream file(filename);
   file >> n >> m;
   for(int i=n-1;i>=0;i--){
@@ -39,17 +39,41 @@ void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bo
 // User thread shared memory
 
 __device__
-void bilinearInterpolation(int *data, float x, float y, int col, float &val)
+void bilinearInterpolation(int *data, float x, float y,int n, int m, float &val)
 {
     float upx    = ceil(x);
     float downx  = floor(x);
     float righty = ceil(y);
     float lefty  = floor(y);
 
-    float topleft = data[int(upx)*col+int(lefty)];
-    float topright = data[int(upx)*col+int(righty)];
-    float bottomleft = data[int(downx)*col+int(lefty)];
-    float bottomright = data[int(downx)*col+int(righty)];
+    float topleft;
+    float topright;
+    float bottomleft;
+    float bottomright;
+
+    if(upx>=n or lefty<0){
+        topleft = 0;
+    }else {
+        topleft = data[int(upx)*m+int(lefty)];
+    }
+
+    if(upx>=n or righty>=m){
+        topright = 0;
+    }else {
+        topright = data[int(upx)*m+int(righty)];
+    }
+
+    if(downx<0 or lefty<0){
+        bottomleft = 0;
+    }else {
+        bottomleft = data[int(downx)*m+int(lefty)];
+    }
+
+    if(downx<0 or righty>=m){
+        bottomright = 0;
+    }else {
+        bottomright = data[int(downx)*m+int(righty)];
+    }   
 
     // F(x,y) = z00*(1-x)*(1-y) + z10*x*(1-y) + z01*(1-x)*y + z11*x*y
     float f = bottomleft*(righty - y)*(upx - x) + topleft*(righty - y)*(x - downx) + bottomright*(y-lefty)*(upx - x) + topright*(y-lefty)*(x-downx);
@@ -72,27 +96,33 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
     {
         for(int j=0;j<query_m;j++)
         {
+            int query_cord = int(i)*query_m+int(j);
             if(orientation==0)
             {
                 ptx = x+i;
                 pty = y+j;
 
-                int data_cord = int(ptx)*m+int(pty);
-                int query_cord = int(i)*query_m+int(j);
+                if(ptx <0 or ptx>=n or pty <0 or pty>=m){
+                    sum += (queryR[query_cord])*(queryR[query_cord]);
+                    sum += (queryG[query_cord])*(queryG[query_cord]);
+                    sum += (queryB[query_cord])*(queryB[query_cord]);
+                    continue;
+                }
 
+                int data_cord = int(ptx)*m+int(pty);
+                
                 sum += (dataR[data_cord] - queryR[query_cord])*(dataR[data_cord] - queryR[query_cord]);
                 sum += (dataG[data_cord] - queryG[query_cord])*(dataG[data_cord] - queryG[query_cord]);
                 sum += (dataB[data_cord] - queryB[query_cord])*(dataB[data_cord] - queryB[query_cord]);
             }
-            else if(orientation==1)
+            else if(orientation==1) // +45
             {
-                ptx = x + i*(1/1.414) + j*(1/1.414);
-                pty = y + j*(1/1.414) - i*(1/1.414);
-                int query_cord = int(i)*query_m+int(j);
+                ptx = x + i*(1/sqrt(2.0)) + j*(1/sqrt(2.0));
+                pty = y + j*(1/sqrt(2.0)) - i*(1/sqrt(2.0));
 
-                float r;bilinearInterpolation(dataR,ptx,pty,query_m,r);
-                float g;bilinearInterpolation(dataG,ptx,pty,query_m,g);
-                float b;bilinearInterpolation(dataB,ptx,pty,query_m,b);
+                float r;bilinearInterpolation(dataR,ptx,pty,n,m,r);
+                float g;bilinearInterpolation(dataG,ptx,pty,n,m,g);
+                float b;bilinearInterpolation(dataB,ptx,pty,n,m,b);
 
                 sum += (r - queryR[query_cord])*(r - queryR[query_cord]);
                 sum += (g - queryG[query_cord])*(g - queryG[query_cord]);
@@ -101,13 +131,12 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
             }
             else if(orientation==2)
             {
-                ptx = x + i*(1/1.414) - j*(1/1.414);
-                ptx = x + i*(1/1.414) + j*(1/1.414);
-                int query_cord = int(i)*query_m+int(j);
+                ptx = x + i*(1/sqrt(2.0)) - j*(1/sqrt(2.0));
+                ptx = x + i*(1/sqrt(2.0)) + j*(1/sqrt(2.0));
 
-                float r;bilinearInterpolation(dataR,ptx,pty,query_m,r);
-                float g;bilinearInterpolation(dataG,ptx,pty,query_m,g);
-                float b;bilinearInterpolation(dataB,ptx,pty,query_m,b);
+                float r;bilinearInterpolation(dataR,ptx,pty,n,m,r);
+                float g;bilinearInterpolation(dataG,ptx,pty,n,m,g);
+                float b;bilinearInterpolation(dataB,ptx,pty,n,m,b);
 
                 sum += (r - queryR[query_cord])*(r - queryR[query_cord]);
                 sum += (g - queryG[query_cord])*(g - queryG[query_cord]);
@@ -122,7 +151,7 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
 
 // TODO store R,G,B pointers in some array or in some sort of struct
 __global__
-void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, float *rmsdValues, int QueryVal, int threshold)
+void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, float *rmsdValues, int QueryVal, float threshold)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx> m*n*3) return;
@@ -131,10 +160,6 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
     int orientation = (idx%(m*3))%3;
     long long val = 0;
     //printf("x %d y %d or %d \n",x,y,orientation);
-    
-    // printf("Inside, 1.)%d\t2.)%d\t3.)%d\t4.)%d\t5.)Idx:%d\n",x,y,query_n,query_m,idx);
-    // printf("N,M, 1.)%d\t2.)%d\n",n,m);
-    // if(x+query_n>=n || y+query_m>=m)return;
 
     int xmin,xmax,ymin,ymax;
 
@@ -144,29 +169,23 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
         ymin = 0;
         ymax = query_m;
     }else if(orientation==1){ // +45 degrees
-        ymin = -(query_n)/(1.414);
-        ymax = query_m/(1.414);
+        ymin = -(query_n)/(sqrt(2.0));
+        ymax = query_m/(sqrt(2.0));
         xmin = 0;
-        xmax = (query_m + query_n)/(1.414);
+        xmax = (query_m + query_n)/(sqrt(2.0));
     }else { // -45 degrees
         ymin = 0;
-        ymax = (query_m + query_n)/(1.414);
-        xmin = -(query_m)/(1.414);
-        xmax = (query_n)/(1.414);
+        ymax = (query_m + query_n)/(sqrt(2.0));
+        xmin = -(query_m)/(sqrt(2.0));
+        xmax = (query_n)/(sqrt(2.0));
     }
     
 
     for(int i=xmin;i<xmax;i++){
-        bool flag = false;
         for(int j=ymin;j<ymax;j++){
-            if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) {
-                val = 0;
-                flag = true;
-                break;
-            }
+            if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) val += 0;
             else val += data[(x+i)*m + (y+j)];
         }
-        if(flag) break;
     }
 
     int boxSize = (xmax-xmin)*(ymax-ymin);
@@ -175,10 +194,9 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
 
     float rmsd = -1;
 
-    if(abs(result[idx] -QueryVal)<=threshold)
+    if(abs(result[idx] - QueryVal) <= threshold)
     {
         computeRMSD(dataR,dataG,dataB,queryR,queryG,queryB,n,m,query_n,query_m,idx,rmsd);
-        // computeRMSD(data,queryData,n,m,query_n,query_m,x,y);
     }
 
     rmsdValues[idx] = rmsd;
@@ -187,14 +205,9 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
     //     printf("%d %d %f \n",x,y,result[idx]);
     // }
 
-    if(x==290 and y==120 and orientation==1){
-        printf("%.6f \n", rmsdValues[idx]);
-    }
-
-    // printf("Sub region (%d,%d) avg value: %d\n",x,y,idx,result[idx]);
-
-    // print blockDim
-    //printf("BlockDim: %d\t, BlockIdx: %d\t, ThreadIdx: %d\n",blockDim.x,blockIdx.x,threadIdx.x);
+    // if(x==290 and y==120 and orientation==1){
+    //     printf("RMSD:%.6f AVG:%f %f %d \n", rmsdValues[idx], result[idx], threshold, QueryVal);
+    // }
 }
 
 struct triplet
@@ -214,11 +227,11 @@ int main(int argc, char* argv[]){
 
     string data_image_path = argv[1];
     string query_image_path = argv[2];
-    double threshold1 = stod(argv[3]); // for RMSD
-    double threshold2 = stod(argv[4]); // for Gray-Scale image summary
+    float threshold1 = stof(argv[3]); // for RMSD
+    float threshold2 = stof(argv[4]); // for Gray-Scale image summary
     int n = stoi(argv[5]);
     int rows, cols;
-    int imageSummaryQuery;
+    float imageSummaryQuery;
 
     // Read the data image
     ifstream data_image_file(data_image_path);
@@ -254,28 +267,16 @@ int main(int argc, char* argv[]){
 
     cout<<"Query Image Summary: "<<imageSummaryQuery<<endl;
 
-    // Compute the image summary
-    // int imageSummaryCuda[rows-query_rows][cols-query_cols];
-
-    // int block_size = 256;
-    // int grid_size = (rows-query_rows)/block_size + 1;
-
     int imageSummarySize = (cols)*(rows)*3;
 
     float *imageSummary;
     float *rmsdValues;
-    // cudaMalloc((void **)&data_imageVCuda,sizeof(int)*rows*cols);
-    // cudaMalloc((void **)&imageSummaryCuda,sizeof(int)*imageSummarySize);
-    
-    // cudaMemcpy(data_imageVCuda,&data_imageV,sizeof(int)*rows*cols,cudaMemcpyHostToDevice);
 
 
     cudaMallocManaged(&imageSummary, imageSummarySize*sizeof(float));
     cudaMallocManaged(&rmsdValues, imageSummarySize*sizeof(float));
 
     int num_blocks = (rows*cols*3)/1024 + 1;
-
-    // computeImageSummary<<<grid_size,block_size>>>(data_imageVCuda,rows,cols,query_rows,query_cols,imageSummaryCuda);
 
     computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold2);
 
@@ -297,8 +298,6 @@ int main(int argc, char* argv[]){
     {
         if(rmsdValues[i]!=-1)
         {
-    //         int x = idx/(m*3);
-    // int y = (idx%(m*3))/3;
             triplet t;
             t.x   = i/(cols*3);
             t.y   = (i%(cols*3))/3;
