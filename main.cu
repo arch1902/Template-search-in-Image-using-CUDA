@@ -3,8 +3,10 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
+using namespace std::chrono;
 
 // __global__ void add(int *a, int *b, int *c)
 // {
@@ -224,7 +226,9 @@ bool sortbyVal(const triplet &a,
 }
 
 int main(int argc, char* argv[]){
-
+	
+	auto start = high_resolution_clock::now();
+    
     string data_image_path = argv[1];
     string query_image_path = argv[2];
     float threshold1 = stof(argv[3]); // for RMSD
@@ -312,11 +316,16 @@ int main(int argc, char* argv[]){
     {
         cout << "x:" << output[i].x << ", y:" << output[i].y << ", orientation:" << output[i].orientation << ", val:" << output[i].val << "\n";
     }
-    cout<<output.size()<<endl;
+    cout<< "Vector Size: " << output.size()<<endl;
 
     // for(int i=0;i<imageSummarySize;i++){
     //     cout<<"x:"<<i/(cols*3)<<", y:"<<(i%(cols*3))/3<<", orientation:"<<(i%(cols*3))%3<<" -> "<<imageSummary[i]<<endl;
     // }
+    
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    
+    cout << "Time taken by function: "<< duration.count()/(1000000.0) << " sec" << endl;
 
 
     return 0;
