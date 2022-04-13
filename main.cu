@@ -6,17 +6,40 @@
 
 using namespace std;
 
-// __global__ void add(int *a, int *b, int *c)
-// {
-//   *c = *a + *b;
-// }
-
-void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bool flag, float &avg)
+void dataInput(int n, int m, string filename, float *arr, int *R, int *G, int *B, int *compressedData)
 {
   int r,g,b;
   float val = 0;
   ifstream file(filename);
   file >> n >> m;
+
+  for(int i=n-1;i>=0;i--)
+  {
+      float valRow = 0;
+      for(int j=0;j<m;j++){
+          file >> r >> g >> b;
+          R[i*m + j] = r;
+          G[i*m + j] = g;
+          B[i*m + j] = b;
+
+          //TODO check if conversion to float array is required or not
+          arr[i*m + j] = (r+g+b)/3;
+          valRow += arr[i*m+j];
+          compressedData[i*m + j] = valRow;
+      }
+      val += valRow;
+  }
+  cout<<"Data Image read !"<<endl;
+  file.close();
+}
+
+void queryInput(int n, int m, string filename, float *arr, int *R, int *G, int *B, float &avg)
+{
+  int r,g,b;
+  float val = 0;
+  ifstream file(filename);
+  file >> n >> m;
+
   for(int i=n-1;i>=0;i--){
       for(int j=0;j<m;j++){
           file >> r >> g >> b;
@@ -29,11 +52,10 @@ void input(int n, int m, string filename, float *arr, int *R, int *G, int *B, bo
           val += arr[i*m+j];
       }
   }
-  if(!flag) cout<<"Data Image read !"<<endl;
+  cout << "Query Image read!\n";
   file.close();
-  if(flag) avg = val/(m*n);
+  avg = val/(m*n);
 }
-
 
 // TODO optimize this function, add elements row-wise in parallel and then take their sum
 // User thread shared memory
@@ -151,7 +173,7 @@ void computeRMSD(int *dataR, int *dataG, int *dataB, int *queryR, int *queryG, i
 
 // TODO store R,G,B pointers in some array or in some sort of struct
 __global__
-void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, float *rmsdValues, int QueryVal, float threshold)
+void computeImageSummary(float *data, int *dataR, int *dataG, int *compressedData, int *dataB, float *queryData, int *queryR, int *queryG, int *queryB, int n, int m, int query_n, int query_m, float *result, float *rmsdValues, int QueryVal, float threshold)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx> m*n*3) return;
@@ -168,7 +190,7 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
         xmax = query_n;
         ymin = 0;
         ymax = query_m;
-    }else if(orientation==1){ // +45 degrees
+    }else if(orientation==1) { // +45 degrees
         ymin = -(query_n)/(sqrt(2.0));
         ymax = query_m/(sqrt(2.0));
         xmin = 0;
@@ -180,13 +202,31 @@ void computeImageSummary(float *data, int *dataR, int *dataG, int *dataB, float 
         xmax = (query_n)/(sqrt(2.0));
     }
     
-
-    for(int i=xmin;i<xmax;i++){
-        for(int j=ymin;j<ymax;j++){
+    for(int i=x+xmin;i<x+xmax;i++){
+        for(int j=y+ymin;j<y+ymax;j++){
             if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) val += 0;
             else val += data[(x+i)*m + (y+j)];
         }
     }
+
+    if((x+xmin)<0 || (x+xmax)>=n || (y+ymin)<0 || (y+ymax)>=m)
+    {
+        result[idx] = -1;
+        rmsdValues[idx] = -1;
+        return;
+    }
+
+    for(int i=x+xmin;i<x+xmax;i++)
+    {
+        val += (compressedData[i*m + (y+ymax)] - compressedData[i*m + (y+ymin)] + data[i*m + y+ymin]);
+    }
+
+    // for(int i=xmin;i<xmax;i++){
+    //     for(int j=ymin;j<ymax;j++){
+    //         if(x+i >= n or x+i < 0 or y+j >= m or y+j < 0) val += 0;
+    //         else val += data[(x+i)*m + (y+j)];
+    //     }
+    // }
 
     int boxSize = (xmax-xmin)*(ymax-ymin);
 
@@ -241,12 +281,15 @@ int main(int argc, char* argv[]){
     int *data_imageR;
     int *data_imageG;
     int *data_imageB;
+    int *compressedData;
+
     cudaMallocManaged(&data_imageV, rows*cols*sizeof(float));
     cudaMallocManaged(&data_imageR, rows*cols*sizeof(int));
     cudaMallocManaged(&data_imageG, rows*cols*sizeof(int));
     cudaMallocManaged(&data_imageB, rows*cols*sizeof(int));
+    cudaMallocManaged(&compressedData, rows*cols*sizeof(int));
 
-    input(rows,cols,data_image_path,data_imageV,data_imageR,data_imageG,data_imageB,false,imageSummaryQuery);
+    dataInput(rows,cols,data_image_path,data_imageV,data_imageR,data_imageG,data_imageB,compressedData);
 
     // Read the query image
     ifstream query_image_file(query_image_path);
@@ -263,7 +306,7 @@ int main(int argc, char* argv[]){
     cudaMallocManaged(&query_imageG, query_rows*query_cols*sizeof(int));
     cudaMallocManaged(&query_imageB, query_rows*query_cols*sizeof(int));
     
-    input(query_rows,query_cols,query_image_path,query_imageV,query_imageR,query_imageG,query_imageB,true,imageSummaryQuery);
+    queryInput(query_rows,query_cols,query_image_path,query_imageV,query_imageR,query_imageG,query_imageB,imageSummaryQuery);
 
     cout<<"Query Image Summary: "<<imageSummaryQuery<<endl;
 
@@ -278,17 +321,16 @@ int main(int argc, char* argv[]){
 
     int num_blocks = (rows*cols*3)/1024 + 1;
 
-    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold2);
+    computeImageSummary<<<num_blocks, 1024>>>(data_imageV,data_imageR, data_imageG, compressedData, data_imageB, query_imageV, query_imageR, query_imageG, query_imageB, rows, cols, query_rows, query_cols, imageSummary, rmsdValues, imageSummaryQuery,threshold2);
 
     cudaError_t err = cudaGetLastError();
 
-     if ( err != cudaSuccess )
-     {
-        printf("CUDA Error: %s\n", cudaGetErrorString(err));       
+    if ( err != cudaSuccess )
+    {
+    printf("CUDA Error: %s\n", cudaGetErrorString(err));       
 
-        // Possibly: exit(-1) if program cannot continue....
-     }
-
+    // Possibly: exit(-1) if program cannot continue....
+    }
 
     cudaDeviceSynchronize();
 
