@@ -4,8 +4,8 @@ import numpy as np
 
 data = []
 
-# filename = "query_image.txt"
-filename = "data_image.txt"
+filename = "./testcases/test_case_2_small_image/query_image_a.txt"
+# filename = "./testcases/test_case_2_small_image/data_image_a.txt"
 
 with open(filename,"r") as f:
     data = f.readlines()
@@ -35,5 +35,7 @@ print(image[n-1][0])
 # print(image[119][119])
 
 img = Image.fromarray(image, 'RGB')
-img.save('my.png')
+
+img.save('tc2_small_query.png')
+# img.save('tc2_small_data.png')
 

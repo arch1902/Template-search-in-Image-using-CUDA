@@ -3,8 +3,10 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
+using namespace std::chrono;
 
 void dataInput(int n, int m, string filename, float *arr, int *R, int *G, int *B, int *compressedData)
 {
@@ -263,7 +265,10 @@ bool sortbyVal(const triplet &a,
     return (a.val < b.val);
 }
 
-int main(int argc, char* argv[]){
+int main(int argc, char* argv[])
+{
+
+    auto start = high_resolution_clock::now();
 
     string data_image_path = argv[1];
     string query_image_path = argv[2];
@@ -352,14 +357,13 @@ int main(int argc, char* argv[]){
 
     for(int i=0;i<min(n,(int)output.size());i++)
     {
-        cout << "x:" << output[i].x << ", y:" << output[i].y << ", orientation:" << output[i].orientation << ", val:" << output[i].val << "\n";
+        cout << "x:" << output[i].x << ", y:" << output[i].y << ", orientation:" << output[i].orientation << ", RMSDval:" << output[i].val << "\n";
     }
-    cout<<output.size()<<endl;
+    cout << "\nCount of Valid Candidates (after TH2): " << output.size()<<endl;
 
-    // for(int i=0;i<imageSummarySize;i++){
-    //     cout<<"x:"<<i/(cols*3)<<", y:"<<(i%(cols*3))/3<<", orientation:"<<(i%(cols*3))%3<<" -> "<<imageSummary[i]<<endl;
-    // }
-
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    cout << "Time taken by function: "<< duration.count()/(1000000.0) << " sec" << endl;
 
     return 0;
 
