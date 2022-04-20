@@ -1,2 +1,3 @@
 #!/bin/bash
-module add compiler/cuda/11.0/compilervars
+
+./cuda $1 $2 $3 $4 $5
